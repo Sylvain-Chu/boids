@@ -9,6 +9,7 @@ const AVOID_FACTOR = 0.05;
 const MATCHING_FACTOR = 0.05;
 const MIN_DISTANCE = 20;
 const DRAW_TRAIL = true;
+const GRID_SIZE = 50;
 
 // Size of the canvas, updated to fill the whole browser
 let width = window.innerWidth;
@@ -22,16 +23,19 @@ const MOUSE_AVOIDANCE_FACTOR = 0.1;
 
 // Boids array
 let boids = [];
+let selectedBoid = null;
 
 // Initialize boids with random positions and velocities
 function initBoids() {
-  boids = Array.from({ length: NUM_BOIDS }, () => ({
+  boids = Array.from({ length: NUM_BOIDS }, (_, id) => ({
+    id,
     x: Math.random() * width,
     y: Math.random() * height,
     dx: Math.random() * 10 - 5,
     dy: Math.random() * 10 - 5,
     history: [],
   }));
+  selectedBoid = boids[0]; // Select the first boid by default
 }
 
 // Calculate distance between two points
@@ -143,17 +147,17 @@ function drawBoid(ctx, boid) {
   const size = 5 + 10 * (speed / SPEED_LIMIT);
   const angle = Math.atan2(boid.dy, boid.dx);
 
+  ctx.save();
   ctx.translate(boid.x, boid.y);
   ctx.rotate(angle);
-  ctx.translate(-boid.x, -boid.y);
-  ctx.fillStyle = color;
+  ctx.fillStyle = boid === selectedBoid ? 'red' : color;
   ctx.beginPath();
-  ctx.moveTo(boid.x, boid.y);
-  ctx.lineTo(boid.x - size, boid.y + size / 2);
-  ctx.lineTo(boid.x - size, boid.y - size / 2);
+  ctx.moveTo(0, 0);
+  ctx.lineTo(-size, size / 2);
+  ctx.lineTo(-size, -size / 2);
   ctx.closePath();
   ctx.fill();
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.restore();
 
   if (DRAW_TRAIL) {
     ctx.strokeStyle = "#558cf466";
@@ -162,6 +166,40 @@ function drawBoid(ctx, boid) {
     for (const point of boid.history) {
       ctx.lineTo(point[0], point[1]);
     }
+    ctx.stroke();
+  }
+}
+
+function drawCircle(ctx, x, y, radius, color) {
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, 2 * Math.PI);
+  ctx.strokeStyle = color;
+  ctx.stroke();
+}
+
+function drawLine(ctx, x1, y1, x2, y2, color) {
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.strokeStyle = color;
+  ctx.stroke();
+}
+
+function drawGrid(ctx) {
+  ctx.strokeStyle = '#555';
+  ctx.lineWidth = 0.5;
+
+  for (let x = 0; x < width; x += GRID_SIZE) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, height);
+    ctx.stroke();
+  }
+
+  for (let y = 0; y < height; y += GRID_SIZE) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(width, y);
     ctx.stroke();
   }
 }
@@ -184,8 +222,35 @@ function animationLoop() {
 
   const ctx = document.getElementById("boids").getContext("2d");
   ctx.clearRect(0, 0, width, height);
+
+  drawGrid(ctx);
+
   for (let boid of boids) {
     drawBoid(ctx, boid);
+  }
+
+  if (selectedBoid) {
+    drawCircle(ctx, selectedBoid.x, selectedBoid.y, VISUAL_RANGE, 'yellow');
+    const neighbors = boids.filter(boid => calculateDistance(selectedBoid.x, selectedBoid.y, boid.x, boid.y) < VISUAL_RANGE);
+    
+    let centerX = 0, centerY = 0, avgDX = 0, avgDY = 0;
+
+    for (let neighbor of neighbors) {
+      drawLine(ctx, selectedBoid.x, selectedBoid.y, neighbor.x, neighbor.y, 'yellow');
+      centerX += neighbor.x;
+      centerY += neighbor.y;
+      avgDX += neighbor.dx;
+      avgDY += neighbor.dy;
+    }
+
+    if (neighbors.length) {
+      centerX /= neighbors.length;
+      centerY /= neighbors.length;
+      avgDX /= neighbors.length;
+      avgDY /= neighbors.length;
+      drawLine(ctx, selectedBoid.x, selectedBoid.y, centerX, centerY, 'green');
+      drawLine(ctx, selectedBoid.x, selectedBoid.y, selectedBoid.x + avgDX * 10, selectedBoid.y + avgDY * 10, 'blue');
+    }
   }
 
   requestAnimationFrame(animationLoop);
@@ -199,6 +264,14 @@ window.onload = () => {
   document.addEventListener("mousemove", (event) => {
     mouseX = event.clientX;
     mouseY = event.clientY;
+  });
+
+  document.getElementById('boids').addEventListener('click', (event) => {
+    const rect = event.target.getBoundingClientRect();
+    const mouseX = event.clientX - rect.left;
+    const mouseY = event.clientY - rect.top;
+
+    selectedBoid = boids.find(boid => calculateDistance(boid.x, boid.y, mouseX, mouseY) < 10);
   });
 
   initBoids();
